@@ -3,30 +3,34 @@ import {
   NextResponse
 } from 'next/server';
 
-export const dynamic =
-  'force-dynamic';
+export const dynamic = 'force-dynamic';
 
 const BASE =
   'https://countriesnow.space/api/v0.1/countries';
 
+type CountryRow = {
+  name?: string;
+  iso2?: string;
+};
+
+type StateRow = {
+  name?: string;
+};
+
 async function getJson(
   url: string,
   options?: RequestInit
-) {
+): Promise<any> {
   const response =
-    await fetch(
-      url,
-      {
-        ...options,
-        cache: 'no-store',
-        headers: {
-          'Content-Type':
-            'application/json',
-          ...(options?.headers ||
-            {})
-        }
+    await fetch(url, {
+      ...options,
+      cache: 'no-store',
+      headers: {
+        'Content-Type':
+          'application/json',
+        ...(options?.headers || {})
       }
-    );
+    });
 
   if (!response.ok) {
     throw new Error(
@@ -41,21 +45,19 @@ export async function GET(
   request: NextRequest
 ) {
   const type =
-    request.nextUrl
-      .searchParams
-      .get('type');
+    request.nextUrl.searchParams.get(
+      'type'
+    );
 
   const country =
-    request.nextUrl
-      .searchParams
-      .get('country') ||
-    '';
+    request.nextUrl.searchParams.get(
+      'country'
+    ) || '';
 
   const state =
-    request.nextUrl
-      .searchParams
-      .get('state') ||
-    '';
+    request.nextUrl.searchParams.get(
+      'state'
+    ) || '';
 
   try {
     /*
@@ -63,16 +65,13 @@ export async function GET(
      * COUNTRIES
      * =========================
      */
-    if (
-      type ===
-      'countries'
-    ) {
+    if (type === 'countries') {
       const payload =
         await getJson(
           `${BASE}/states`
         );
 
-      const rows =
+      const rows: CountryRow[] =
         Array.isArray(
           payload?.data
         )
@@ -81,40 +80,23 @@ export async function GET(
 
       const countries =
         rows
-          .map(
-            (
-              item: any
-            ) => ({
-              name:
-                String(
-                  item.name ||
-                    ''
-                ),
+          .map(item => ({
+            name:
+              String(
+                item.name || ''
+              ),
 
-              iso2:
-                String(
-                  item.iso2 ||
-                    ''
-                )
-            })
-          )
+            iso2:
+              String(
+                item.iso2 || ''
+              )
+          }))
           .filter(
-            (
-              item: {
-                name: string;
-              }
-            ) =>
-              item.name
+            item =>
+              item.name.length > 0
           )
           .sort(
-            (
-              a: {
-                name: string;
-              },
-              b: {
-                name: string;
-              }
-            ) =>
+            (a, b) =>
               a.name.localeCompare(
                 b.name
               )
@@ -130,10 +112,7 @@ export async function GET(
      * STATES
      * =========================
      */
-    if (
-      type ===
-      'states'
-    ) {
+    if (type === 'states') {
       if (!country) {
         return NextResponse.json({
           states: []
@@ -145,7 +124,6 @@ export async function GET(
           `${BASE}/states`,
           {
             method: 'POST',
-
             body:
               JSON.stringify({
                 country
@@ -153,30 +131,27 @@ export async function GET(
           }
         );
 
-      const states =
-        (
-          payload?.data
-            ?.states ||
-          []
+      const rawStates: StateRow[] =
+        Array.isArray(
+          payload?.data?.states
         )
-          .map(
-            (
-              item: any
-            ) =>
-              String(
-                item.name ||
-                  ''
-              )
+          ? payload.data.states
+          : [];
+
+      const states: string[] =
+        rawStates
+          .map(item =>
+            String(
+              item.name || ''
+            ).trim()
           )
-          .filter(Boolean)
+          .filter(
+            item =>
+              item.length > 0
+          )
           .sort(
-            (
-              a: string,
-              b: string
-            ) =>
-              a.localeCompare(
-                b
-              )
+            (a, b) =>
+              a.localeCompare(b)
           );
 
       return NextResponse.json({
@@ -186,17 +161,10 @@ export async function GET(
 
     /*
      * =========================
-     * DISTRICT / CITY
-     *
-     * The global data source
-     * provides cities for each
-     * selected state.
+     * DISTRICTS / CITIES
      * =========================
      */
-    if (
-      type ===
-      'districts'
-    ) {
+    if (type === 'districts') {
       if (
         !country ||
         !state
@@ -211,7 +179,6 @@ export async function GET(
           `${BASE}/state/cities`,
           {
             method: 'POST',
-
             body:
               JSON.stringify({
                 country,
@@ -220,36 +187,36 @@ export async function GET(
           }
         );
 
-      const cities =
+      const cities: unknown[] =
         Array.isArray(
           payload?.data
         )
           ? payload.data
           : [];
 
-      const districts =
-        Array.from(
-          new Set(
-            cities
-              .map(
-                (
-                  item: unknown
-                ) =>
-                  String(
-                    item ||
-                      ''
-                  ).trim()
-              )
-              .filter(Boolean)
+      const cityNames: string[] =
+        cities
+          .map(item =>
+            String(
+              item ?? ''
+            ).trim()
           )
+          .filter(
+            item =>
+              item.length > 0
+          );
+
+      const uniqueCities =
+        new Set<string>(
+          cityNames
+        );
+
+      const districts: string[] =
+        Array.from(
+          uniqueCities
         ).sort(
-          (
-            a,
-            b
-          ) =>
-            a.localeCompare(
-              b
-            )
+          (a, b) =>
+            a.localeCompare(b)
         );
 
       return NextResponse.json({
@@ -266,38 +233,55 @@ export async function GET(
         status: 400
       }
     );
-
   } catch (error) {
     console.error(
       'Location hierarchy error:',
       error
     );
 
-    /*
-     * Never invent a list.
-     */
+    if (type === 'countries') {
+      return NextResponse.json(
+        {
+          countries: [],
+          error:
+            'Location service is temporarily unavailable.'
+        },
+        {
+          status: 502
+        }
+      );
+    }
+
+    if (type === 'states') {
+      return NextResponse.json(
+        {
+          states: [],
+          error:
+            'Location service is temporarily unavailable.'
+        },
+        {
+          status: 502
+        }
+      );
+    }
+
+    if (type === 'districts') {
+      return NextResponse.json(
+        {
+          districts: [],
+          error:
+            'Location service is temporarily unavailable.'
+        },
+        {
+          status: 502
+        }
+      );
+    }
+
     return NextResponse.json(
       {
-        countries:
-          type ===
-          'countries'
-            ? []
-            : undefined,
-
-        states:
-          type ===
-          'states'
-            ? []
-            : undefined,
-
-        districts:
-          type ===
-          'districts'
-            ? []
-            : undefined,
-
         error:
-          'Location hierarchy service is temporarily unavailable.'
+          'Location service is temporarily unavailable.'
       },
       {
         status: 502
